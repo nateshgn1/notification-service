@@ -30,10 +30,35 @@ The system is designed to support high-volume workloads while remaining extensib
 - Unit test coverage ~77% (50+ test cases and 100% of service layer)
 
 ---
-
 ## 3. Architecture
 
-### 3.1 Layered Structure
+### 3.1 High-Level Architecture (Current - Polling Based)
+
+![Current Architecture](docs/diagrams/current-architecture.png)
+
+The current implementation uses a database-driven polling mechanism for dispatch.
+
+- Notifications are persisted in MySQL.
+- A scheduled poller retrieves eligible notifications.
+- The dispatcher processes notifications via channel-specific implementations and updates their status.
+
+---
+
+### 3.2 High-Level Architecture (Event-Driven - Kafka Based)
+
+![Kafka Architecture](docs/diagrams/kafka-architecture.png)
+
+The event-driven architecture replaces polling with Kafka-based asynchronous processing.
+
+- Notification creation publishes an event to Kafka.
+- Dispatch workers consume events using a consumer group.
+- Retry events are routed to a retry topic.
+- A dead-letter topic handles exhausted retries.
+- Workers update notification status in MySQL.
+
+---
+
+### 3.3 Layered Structure
 
 The application follows a clean layered architecture to ensure separation of concerns, modularity, and testability:
 
@@ -46,9 +71,9 @@ This structure allows independent evolution of API, business logic, and persiste
 
 ---
 
-### 3.2 Dispatch Pipeline
+### 3.4 Dispatch Pipeline
 
-Notification delivery is handled asynchronously using a polling-based dispatch pipeline:
+In the current polling-based implementation, notification delivery follows this pipeline:
 
 NotificationPoller  
 → NotificationDispatcherService  
@@ -60,10 +85,10 @@ The detailed runtime behavior of this pipeline is illustrated in the sequence di
 
 ---
 
-### 3.3 Key Components
+### 3.5 Key Components
 
 **NotificationPoller**  
-Periodically fetches eligible notifications based on status (`CREATED` / `FAILED`), scheduled time, and priority ordering.
+Periodically retrieves eligible notifications based on status (`CREATED` / `FAILED`), scheduled time, and priority ordering.
 
 **NotificationDispatcherService**  
 Executes delivery attempts, manages retry logic with exponential backoff, handles dead-letter transitions, and supports recurring scheduling.
@@ -82,17 +107,18 @@ Provides configurable maximum retry limits per channel via application configura
 
 ---
 
-### 3.4 System Flow Summary
+### 3.6 System Flow Summary
+
+The end-to-end lifecycle of a notification in the current implementation:
 
 1. Client submits a notification request.
 2. The notification is validated and persisted with status `CREATED`.
-3. The poller fetches eligible notifications based on priority and scheduling rules.
-4. The dispatcher resolves the appropriate channel and attempts delivery.
-5. Based on the outcome:
+3. Eligible notifications are selected based on scheduling and priority rules.
+4. The dispatcher attempts delivery via the appropriate channel.
+5. Status transitions based on outcome:
     - `SENT` on success
-    - `FAILED` with scheduled retry on transient failure
-    - `DEAD_LETTER` if retries are exhausted
-   
+    - `FAILED` with a scheduled retry on transient failure
+    - `DEAD_LETTER` if retries are exhausted.
 ---
 ## 4. Sequence Diagrams
 
@@ -225,8 +251,8 @@ Default active profile: `dev`
 
 When running with the `dev` profile:
 
-Swagger UI:
-http://localhost:8080/swagger-ui.html
+Swagger UI: [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
+
 ---
 
 ## 13. Testing
@@ -278,7 +304,6 @@ The Kafka-based architecture demonstrates how the system can evolve to a distrib
 - Metrics, tracing, and observability integration (Prometheus / Grafana)
 - Dead-letter queue monitoring and alerting
 - Idempotency handling for duplicate event processing
-- High-Level Design (HLD) diagrams
 - Class and ER diagrams
 
 ---
